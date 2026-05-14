@@ -1,7 +1,8 @@
-# DSP
-# multirate_asrc
-Converts audio from 44.1 kHz to 48 kHz using polyphase decomposition (L=160, M=147). This is literally DSP Concepts' Software ASRC product in MATLAB form. It plots the filter response, input/output spectra, and SNR vs. their built-in resample().
-# Key DSP concepts
-FFT · Polyphase filter · Sample rate conversion (or whatever applies)
-# How to run
-Open in MATLAB and press Run. Requires Signal Processing Toolbox
+# DSP Portfolio — MATLAB
+### ECE Graduate · Northeastern University · Digital Signal Processing (Prof. Vinay K. Ingle)
+
+| Project | Concepts | Folder |
+|---|---|---|
+| Polyphase ASRC (44.1→48 kHz) | Multirate DSP, polyphase filters, sample rate conversion | multirate-asrc/ |
+| LMS Adaptive Noise Canceller | Wiener filter, LMS algorithm, convergence analysis | lms-noise-canceller/ |
+| FIR Filter Design Comparison | Window method, Parks-McClellan, group delay, linear phase | fir-filter-design/ |
