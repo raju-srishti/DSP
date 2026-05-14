@@ -1,7 +1,8 @@
 # DSP
-# multirate_asrc
-Converts audio from 44.1 kHz to 48 kHz using polyphase decomposition (L=160, M=147). This is literally DSP Concepts' Software ASRC product in MATLAB form. It plots the filter response, input/output spectra, and SNR vs. their built-in resample().
+# FIR filter design
+Compares all four window types (Rectangular, Hamming, Kaiser, Parks-McClellan) on the same spec, with passband ripple zoom, group delay verification, and pole-zero plot.
+ four ways to make a frequency wall — rectangular is rough, Hamming is smooth, Kaiser is tunable, Parks-McClellan is mathematically perfect
 # Key DSP concepts
-FFT · Polyphase filter · Sample rate conversion (or whatever applies)
+Hamming · Kaiser · Parks-McClellan
 # How to run
 Open in MATLAB and press Run. Requires Signal Processing Toolbox
