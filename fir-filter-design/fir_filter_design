@@ -1,0 +1,140 @@
+% =========================================================
+%  FIR Filter Design: Window Method vs. Parks-McClellan
+%
+%  Demonstrates: linear phase FIR, Kaiser window design,
+%  equiripple (firpm) design, group delay, MATLAB toolbox
+%  Ref: Manolakis & Ingle, Ch. 7 — FIR Filter Design
+%
+%  Application: anti-aliasing filters in audio ADC pipelines,
+%  audio crossover networks, microphone signal conditioning
+% =========================================================
+
+clear; close all; clc;
+
+%% --- Specification (audio lowpass filter) ---
+fs      = 48000;    % sample rate (Hz)
+f_pass  = 8000;     % passband edge (Hz)
+f_stop  = 10000;    % stopband edge (Hz)
+Rp      = 0.5;      % passband ripple (dB)
+Rs      = 60;       % stopband attenuation (dB)
+N       = 100;      % filter order
+
+% Normalised frequencies (0 to 1, where 1 = fs/2)
+Wn_pass = f_pass / (fs/2);
+Wn_stop = f_stop / (fs/2);
+
+fprintf('=== FIR Filter Specification ===\n');
+fprintf('Sample rate   : %d Hz\n', fs);
+fprintf('Passband edge : %d Hz  (δp = %.4f)\n', f_pass, (10^(Rp/20)-1)/(10^(Rp/20)+1));
+fprintf('Stopband edge : %d Hz  (δs = %.5f)\n', f_stop, 10^(-Rs/20));
+fprintf('Filter order  : %d  (%d taps)\n\n', N, N+1);
+
+%% --- Design 1: Rectangular Window ---
+h_rect = fir1(N, (Wn_pass + Wn_stop)/2, rectwin(N+1));
+
+%% --- Design 2: Hamming Window ---
+h_hamm = fir1(N, (Wn_pass + Wn_stop)/2, hamming(N+1));
+
+%% --- Design 3: Kaiser Window (optimal β from spec) ---
+% Kaiser window beta from desired stopband attenuation
+if Rs >= 50
+    beta = 0.1102 * (Rs - 8.7);
+elseif Rs >= 21
+    beta = 0.5842*(Rs-21)^0.4 + 0.07886*(Rs-21);
+else
+    beta = 0;
+end
+fprintf('Kaiser beta (from Rs=%.0f dB): %.4f\n', Rs, beta);
+h_kais = fir1(N, (Wn_pass + Wn_stop)/2, kaiser(N+1, beta));
+
+%% --- Design 4: Parks-McClellan Equiripple (firpm) ---
+% firpm requires band edges and desired amplitudes
+bands  = [0, Wn_pass, Wn_stop, 1];
+amps   = [1, 1,       0,       0];
+wts    = [1, (10^(Rp/20)-1)/(10^(-Rs/20))];  % weight ratio passband:stopband
+h_pm   = firpm(N, bands, amps, wts);
+
+%% --- Frequency responses ---
+NFFT = 4096;
+f    = (0:NFFT/2) * fs / NFFT;
+
+[H_rect, ~] = freqz(h_rect, 1, NFFT, fs);
+[H_hamm, ~] = freqz(h_hamm, 1, NFFT, fs);
+[H_kais, ~] = freqz(h_kais, 1, NFFT, fs);
+[H_pm,   ~] = freqz(h_pm,   1, NFFT, fs);
+
+%% --- Measure actual stopband attenuation ---
+stop_idx = f >= f_stop;
+attn = @(H) -20*log10(max(abs(H(stop_idx))));
+fprintf('\n=== Actual Stopband Attenuation ===\n');
+fprintf('Rectangular : %.1f dB\n', attn(H_rect));
+fprintf('Hamming     : %.1f dB\n', attn(H_hamm));
+fprintf('Kaiser      : %.1f dB\n', attn(H_kais));
+fprintf('Parks-McClellan: %.1f dB\n', attn(H_pm));
+
+%% --- Plots ---
+figure('Name','FIR Filter Design Comparison','Color','w','Position',[100 100 1100 800]);
+
+% 1. Magnitude response (linear)
+subplot(3,2,1);
+plot(f/1e3, abs(H_rect(1:NFFT/2+1)), 'Color',[0.6 0.6 0.6]); hold on;
+plot(f/1e3, abs(H_hamm(1:NFFT/2+1)), 'b');
+plot(f/1e3, abs(H_kais(1:NFFT/2+1)), 'r');
+plot(f/1e3, abs(H_pm(1:NFFT/2+1)),   'g', 'LineWidth', 1.5);
+xline(f_pass/1e3,'k--'); xline(f_stop/1e3,'k:');
+xlabel('Frequency (kHz)'); ylabel('|H(f)|');
+title('Magnitude Response (Linear)'); xlim([0 fs/2e3]);
+legend('Rectangular','Hamming','Kaiser','Parks-McClellan','Location','northeast');
+grid on;
+
+% 2. Magnitude response (dB) — full view
+subplot(3,2,2);
+plot(f/1e3, 20*log10(abs(H_rect(1:NFFT/2+1))+eps),'Color',[0.6 0.6 0.6]); hold on;
+plot(f/1e3, 20*log10(abs(H_hamm(1:NFFT/2+1))+eps),'b');
+plot(f/1e3, 20*log10(abs(H_kais(1:NFFT/2+1))+eps),'r');
+plot(f/1e3, 20*log10(abs(H_pm(1:NFFT/2+1))  +eps),'g','LineWidth',1.5);
+xline(f_pass/1e3,'k--','Passband'); xline(f_stop/1e3,'k:','Stopband');
+yline(-Rs,'m--',sprintf('-%d dB spec',Rs));
+xlabel('Frequency (kHz)'); ylabel('Magnitude (dB)');
+title('Magnitude Response (dB)'); xlim([0 fs/2e3]); ylim([-100 5]);
+legend('Rectangular','Hamming','Kaiser','Parks-McClellan','Location','northeast');
+grid on;
+
+% 3. Passband ripple zoom
+subplot(3,2,3);
+pass_idx = f <= f_pass * 1.2;
+plot(f(pass_idx)/1e3, 20*log10(abs(H_hamm(pass_idx))+eps),'b'); hold on;
+plot(f(pass_idx)/1e3, 20*log10(abs(H_kais(pass_idx))+eps),'r');
+plot(f(pass_idx)/1e3, 20*log10(abs(H_pm(pass_idx))  +eps),'g','LineWidth',1.5);
+xlabel('Frequency (kHz)'); ylabel('Magnitude (dB)');
+title('Passband Ripple Zoom'); ylim([-1.5 0.5]);
+legend('Hamming','Kaiser','Parks-McClellan'); grid on;
+
+% 4. Impulse responses
+subplot(3,2,4);
+stem(0:N, h_kais, 'r', 'filled', 'MarkerSize', 3); hold on;
+stem(0:N, h_pm,   'g', 'filled', 'MarkerSize', 3);
+xlabel('Sample n'); ylabel('h(n)');
+title('Impulse Responses (Kaiser vs. Parks-McClellan)');
+legend('Kaiser','Parks-McClellan'); grid on;
+
+% 5. Group delay (should be N/2 = constant for linear phase)
+subplot(3,2,5);
+[gd_k, ~] = grpdelay(h_kais, 1, NFFT, fs);
+[gd_pm,~] = grpdelay(h_pm,   1, NFFT, fs);
+plot(f/1e3, gd_k(1:NFFT/2+1), 'r'); hold on;
+plot(f/1e3, gd_pm(1:NFFT/2+1),'g','LineWidth',1.5);
+yline(N/2, 'k--', sprintf('N/2 = %d samples', N/2));
+xlabel('Frequency (kHz)'); ylabel('Group delay (samples)');
+title('Group Delay — Constant = Linear Phase');
+legend('Kaiser','Parks-McClellan'); xlim([0 fs/2e3]); ylim([0 N]);
+grid on;
+
+% 6. Pole-zero plot (FIR: all poles at origin)
+subplot(3,2,6);
+zplane(h_pm, 1);
+title('Pole-Zero Plot — Parks-McClellan (FIR: all poles at origin)');
+
+sgtitle(sprintf('FIR LP Filter Design Comparison  |  N=%d, fp=%dHz, fs=%dHz, Rs=%ddB', ...
+        N, f_pass, f_stop, Rs), 'FontWeight','bold');
+ exportgraphics(gcf, 'plots/fir_filter_design.png', 'Resolution', 150);
