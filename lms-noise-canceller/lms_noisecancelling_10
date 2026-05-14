@@ -1,0 +1,127 @@
+% =========================================================
+%  Adaptive LMS Noise Canceller
+%
+%  Demonstrates: Wiener filter, LMS algorithm, step-size
+%  convergence, noise cancellation in audio signals
+%  Ref: Manolakis & Ingle, Ch. 11 — Adaptive Filters
+%
+%% =========================================================
+
+clear; close all; clc;
+
+%% --- Parameters ---
+fs      = 16000;    % sample rate (Hz) — typical for voice
+N       = 8000;     % number of samples (0.5 sec)
+f_sig   = 440;      % desired signal frequency (Hz) — voice tone
+SNR_dB  = 5;        % input SNR (dB) — noisy mic environment
+
+% LMS parameters
+mu      = 0.01;     % step size (learning rate) — critical tuning parameter
+L_filt  = 32;       % adaptive filter length (taps)
+
+%% --- Generate signals ---
+t   = (0:N-1) / fs;
+
+% Desired signal: clean voice (440 Hz sine)
+d   = sin(2*pi*f_sig*t);
+
+% Correlated noise source (reference mic — picks up background noise)
+noise_ref = 0.8*sin(2*pi*300*t + 0.3) + 0.5*randn(1,N);
+
+% Noise power scaled to achieve target SNR
+sig_power   = mean(d.^2);
+noise_power = sig_power / 10^(SNR_dB/10);
+noise_ref   = noise_ref / std(noise_ref) * sqrt(noise_power);
+
+% Primary mic: desired signal + correlated noise
+x_primary = d + noise_ref + 0.1*randn(1,N);
+
+%% --- LMS Adaptive Filter ---
+w   = zeros(1, L_filt);   % initialise filter weights to zero
+y   = zeros(1, N);         % filter output (noise estimate)
+e   = zeros(1, N);         % error signal (cleaned audio)
+mse = zeros(1, N);         % mean squared error over time
+
+for n = L_filt:N
+    % Reference input vector (most recent L samples of reference mic)
+    x_vec = noise_ref(n : -1 : n-L_filt+1);
+
+    % Filter output: estimated noise
+    y(n) = w * x_vec';
+
+    % Error: primary mic minus estimated noise = cleaned signal
+    e(n) = x_primary(n) - y(n);
+
+    % LMS weight update: w = w + 2*mu*e*x
+    w = w + 2 * mu * e(n) * x_vec;
+
+    % Track instantaneous MSE
+    mse(n) = e(n)^2;
+end
+
+%% --- Performance metrics ---
+% Use second half (after convergence) for metrics
+conv_idx = round(N/2);
+SNR_in  = 10*log10(mean(d(conv_idx:end).^2) / mean((x_primary(conv_idx:end)-d(conv_idx:end)).^2));
+SNR_out = 10*log10(mean(d(conv_idx:end).^2) / mean((e(conv_idx:end)-d(conv_idx:end)).^2));
+fprintf('Input  SNR: %.1f dB\n', SNR_in);
+fprintf('Output SNR: %.1f dB  (improvement: +%.1f dB)\n', SNR_out, SNR_out - SNR_in);
+fprintf('Final filter weights (first 8): %s\n', mat2str(round(w(1:8),4)));
+
+%% --- Plots ---
+figure('Name','LMS Adaptive Noise Canceller','Color','w');
+
+% 1. Primary mic (noisy)
+subplot(4,1,1);
+plot(t, x_primary, 'b', 'LineWidth', 0.8);
+title(sprintf('Primary Microphone — Noisy Input (SNR = %d dB)', SNR_dB));
+xlabel('Time (s)'); ylabel('Amplitude'); grid on;
+
+% 2. Reference mic (correlated noise)
+subplot(4,1,2);
+plot(t, noise_ref, 'r', 'LineWidth', 0.8);
+title('Reference Microphone — Correlated Noise Source');
+xlabel('Time (s)'); ylabel('Amplitude'); grid on;
+
+% 3. LMS output: cleaned signal vs. clean original
+subplot(4,1,3);
+plot(t, d, 'k', 'LineWidth', 1.2, 'DisplayName', 'Clean reference'); hold on;
+plot(t, e, 'g', 'LineWidth', 0.8, 'DisplayName', sprintf('LMS output (SNR=%.1f dB)', SNR_out));
+title('Cleaned Output vs. Clean Reference');
+xlabel('Time (s)'); ylabel('Amplitude');
+legend('Location','northeast'); grid on;
+
+% 4. Learning curve: MSE over time
+subplot(4,1,4);
+mse_smooth = movmean(mse, 200);   % smoothed MSE
+plot(t, 10*log10(mse_smooth + eps), 'r', 'LineWidth', 1.5);
+xline(t(conv_idx), 'r--', 'Metric window start');
+title('LMS Learning Curve — MSE over Time');
+xlabel('Time (s)'); ylabel('MSE (dB)');
+grid on;
+
+sgtitle(sprintf('Adaptive LMS Noise Canceller  |  \\mu=%.3f, L=%d taps, SNR improvement=+%.1f dB', ...
+        mu, L_filt, SNR_out - SNR_in), 'FontWeight', 'bold');
+
+%% --- Step size sensitivity analysis ---
+figure('Name','Step Size Sensitivity','Color','w');
+mu_vals = [0.001, 0.005, 0.01, 0.05, 0.1];
+colors  = lines(length(mu_vals));
+
+for k = 1:length(mu_vals)
+    w_k = zeros(1, L_filt);
+    mse_k = zeros(1, N);
+    for n = L_filt:N
+        xv = noise_ref(n:-1:n-L_filt+1);
+        y_k = w_k * xv';
+        ek  = x_primary(n) - y_k;
+        w_k = w_k + 2 * mu_vals(k) * ek * xv;
+        mse_k(n) = ek^2;
+    end
+    plot(t, 10*log10(movmean(mse_k,200)+eps), 'Color', colors(k,:), ...
+         'LineWidth', 1.3, 'DisplayName', sprintf('\\mu = %.3f', mu_vals(k)));
+    hold on;
+end
+xlabel('Time (s)'); ylabel('MSE (dB)');
+title('Step Size \mu Sensitivity — Convergence Speed vs. Misadjustment');
+legend('Location','northeast'); grid on;
